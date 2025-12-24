@@ -1,0 +1,172 @@
+services:
+  # Database Service
+  database:
+    image: mysql:latest
+    container_name: mysql-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE_CLIENT}
+    ports:
+      - "${MYSQL_PORT:-3307}:3306"
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Service Registry
+  registry:
+    image: consul:1.15.4
+    container_name: consul-registry
+    ports:
+      - "${CONSUL_PORT:-8500}:8500"
+    networks:
+      - microservices-network
+
+  # Discovery Service
+  discovery:
+    build:
+      context: ../server_eureka
+    container_name: discovery-service
+    ports:
+      - "${EUREKA_PORT:-8761}:8761"
+    networks:
+      - microservices-network
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_INSTANCE_HOSTNAME: discovery
+      EUREKA_CLIENT_REGISTER_WITH_EUREKA: 'false'
+      EUREKA_CLIENT_FETCH_REGISTRY: 'false'
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ../gateway
+    ports:
+      - "${GATEWAY_PORT:-8888}:8888"
+    depends_on:
+      database:
+        condition: service_healthy
+      registry:
+        condition: service_started
+      discovery:
+        condition: service_started
+    networks:
+      - microservices-network
+    environment:
+      SPRING_CLOUD_EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+      SPRING_CLOUD_CONSUL_HOST: ${CONSUL_HOST:-registry}
+      SPRING_CLOUD_CONSUL_PORT: ${CONSUL_PORT:-8500}
+
+  # Customer Microservice
+  customer-service:
+    build:
+      context: ../client
+    ports:
+      - "${CLIENT_PORT:-8088}:8088"
+    depends_on:
+      database:
+        condition: service_healthy
+      registry:
+        condition: service_started
+      api-gateway:
+        condition: service_started
+      discovery:
+        condition: service_started
+    networks:
+      - microservices-network
+    environment:
+      SPRING_CLOUD_EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+      SPRING_CLOUD_CONSUL_HOST: ${CONSUL_HOST:-registry}
+      SPRING_CLOUD_CONSUL_PORT: ${CONSUL_PORT:-8500}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL_CLIENT:-jdbc:mysql://database:3306/clientservicedb?createDatabaseIfNotExist=true}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-root}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-}
+
+  # Vehicle Microservice
+  vehicle-service:
+    build:
+      context: ../car
+    ports:
+      - "${CAR_PORT:-8089}:8089"
+    depends_on:
+      database:
+        condition: service_healthy
+      registry:
+        condition: service_started
+      api-gateway:
+        condition: service_started
+      discovery:
+        condition: service_started
+    networks:
+      - microservices-network
+    environment:
+      SPRING_CLOUD_EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+      SPRING_CLOUD_CONSUL_HOST: ${CONSUL_HOST:-registry}
+      SPRING_CLOUD_CONSUL_PORT: ${CONSUL_PORT:-8500}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL_CAR:-jdbc:mysql://database:3306/carservicedb?createDatabaseIfNotExist=true}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-root}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-}
+
+  # Database Admin Interface
+  db-admin:
+    image: phpmyadmin/phpmyadmin
+    container_name: database-admin
+    environment:
+      PMA_HOST: database
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "${PHPMYADMIN_PORT:-8081}:80"
+    networks:
+      - microservices-network
+
+  # SonarQube Database
+  sonarqube-db:
+    image: postgres:15-alpine
+    container_name: sonarqube-db
+    environment:
+      - POSTGRES_DB=sonar
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=sonar_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # SonarQube Service
+  sonarqube:
+    image: sonarqube:latest
+    container_name: sonarqube
+    ports:
+      - "${SONARQUBE_PORT:-9999}:9000"
+    environment:
+      - SONARQUBE_JDBC_URL=jdbc:postgresql://sonarqube-db:5432/sonar
+      - SONARQUBE_JDBC_USERNAME=sonar
+      - SONARQUBE_JDBC_PASSWORD=sonar_pass
+    depends_on:
+      - sonarqube-db
+    networks:
+      - microservices-network
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+
+networks:
+  microservices-network:
+    name: app-network
+    driver: bridge
+
+volumes:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  postgres_data:

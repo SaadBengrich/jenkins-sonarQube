@@ -1,0 +1,20 @@
+server:
+  port: 8761
+
+eureka:
+  instance:
+    hostname: discovery  # Container hostname for Docker networking
+  client:
+    register-with-eureka: false  # Server does not register itself
+    fetch-registry: false        # Server does not fetch its own registry
+  server:
+    wait-time-in-ms-when-sync-empty: 0  # No startup delay when registry is empty
+
+spring:
+  application:
+    name: discovery-server  # Application name for service discovery
+
+logging:
+  level:
+    com.netflix.eureka: INFO       # Logging level for Eureka components
+    com.netflix.discovery: INFO    # Logging level for discovery components
