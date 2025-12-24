@@ -108,6 +108,11 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>4.3.1.5277</version> <!-- use the latest version -->
+            </plugin>
 
             <plugin>
                 <groupId>org.springframework.boot</groupId>
